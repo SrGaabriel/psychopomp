@@ -1,6 +1,5 @@
 import Psychopomp.Source
-
-abbrev FileId := Int
+import Psychopomp.Files
 
 inductive Severity where
   | error
