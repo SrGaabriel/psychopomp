@@ -1,3 +1,5 @@
+import Psychopomp.Core.RenderConfig
+
 namespace Psychopomp.Render
 
 structure Strokes where
@@ -16,7 +18,7 @@ def Strokes.merge (a b : Strokes) : Strokes where
 def Strokes.isEmpty (s : Strokes) : Bool :=
   !s.up && !s.down && !s.left && !s.right
 
-def Strokes.toChar (s : Strokes) : Char :=
+def Strokes.toUnicode (s : Strokes) : Char :=
   match s.up, s.down, s.left, s.right with
   | false, false, false, false => ' '
   | true,  false, false, false => '│'
@@ -35,6 +37,17 @@ def Strokes.toChar (s : Strokes) : Char :=
   | false, true,  true,  true  => '┬'
   | true,  true,  true,  true  => '┼'
 
+def Strokes.toAscii (s : Strokes) : Char :=
+  if s.isEmpty then ' '
+  else if (s.up || s.down) && (s.left || s.right) then '+'
+  else if s.up || s.down then '|'
+  else '-'
+
+def Strokes.toChar (s : Strokes) (glyphSet : GlyphSet := .unicode) : Char :=
+  match glyphSet with
+  | .unicode => s.toUnicode
+  | .ascii => s.toAscii
+
 namespace Strokes
 
 def vertical : Strokes := { up := true, down := true }
@@ -52,10 +65,29 @@ end Strokes
 
 namespace Glyph
 
-def pipeDotted : Char := '┆'
-def underlineCaret : Char := '^'
-def underlineTilde : Char := '~'
-def arrowRight : Char := '→'
+def gutterPipe : GlyphSet → Char
+  | .unicode => '│'
+  | .ascii => '|'
+
+def pipeDotted : GlyphSet → Char
+  | .unicode => '┆'
+  | .ascii => ':'
+
+def arrowRight : GlyphSet → Char
+  | .unicode => '→'
+  | .ascii => '>'
+
+def underlineHeavy : GlyphSet → Char
+  | .unicode => '━'
+  | .ascii => '='
+
+def underlineWavy : GlyphSet → Char
+  | .unicode => '∿'
+  | .ascii => '~'
+
+def strikethrough : GlyphSet → Char
+  | .unicode => '╳'
+  | .ascii => 'x'
 
 end Glyph
 

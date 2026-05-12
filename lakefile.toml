@@ -1,6 +1,14 @@
 name = "psychopomp"
 version = "0.1.0"
 defaultTargets = ["Psychopomp"]
+testDriver = "test"
 
 [[lean_lib]]
 name = "Psychopomp"
+
+[[lean_lib]]
+name = "Test"
+
+[[lean_exe]]
+name = "test"
+root = "Test"

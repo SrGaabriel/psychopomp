@@ -33,9 +33,9 @@ inductive CellContent where
   | strokes (s : Strokes)
   deriving Repr, BEq, Hashable, Inhabited
 
-def CellContent.render : CellContent → Char
+def CellContent.render (gs : GlyphSet) : CellContent → Char
   | .char c => c
-  | .strokes s => s.toChar
+  | .strokes s => s.toChar gs
 
 structure Cell where
   content : CellContent
@@ -60,13 +60,15 @@ def write (g : Grid) (row col : Nat) (cell : Cell) : Grid :=
     match g.cells[(row, col)]? with
     | none => cell
     | some existing =>
-      if cell.layer > existing.layer then cell
-      else if cell.layer < existing.layer then existing
-      else
-        match existing.content, cell.content with
-        | .strokes a, .strokes b =>
-          { cell with content := .strokes (a.merge b) }
-        | _, _ => cell
+      match existing.content, cell.content with
+      | .strokes a, .strokes b =>
+        { content := .strokes (a.merge b)
+          style := Style.maxSeverity existing.style cell.style
+          layer := if cell.layer.toNat ≥ existing.layer.toNat then cell.layer else existing.layer }
+      | _, _ =>
+        if cell.layer > existing.layer then cell
+        else if cell.layer < existing.layer then existing
+        else cell
   { g with
     cells := g.cells.insert (row, col) merged
     rows := max g.rows (row + 1)
@@ -83,11 +85,7 @@ def hline (g : Grid) (row col1 col2 : Nat) (style : Style) (layer : Layer := .un
   else Id.run do
     let mut g := g
     for c in [col1:col2+1] do
-      let strokes :=
-        if c == col1 then { Strokes.horizontal with left := false }
-        else if c == col2 then { Strokes.horizontal with right := false }
-        else Strokes.horizontal
-      g := g.writeStrokes row c strokes style layer
+      g := g.writeStrokes row c Strokes.horizontal style layer
     return g
 
 def vline (g : Grid) (col row1 row2 : Nat) (style : Style) (layer : Layer := .connector) : Grid :=
@@ -95,11 +93,7 @@ def vline (g : Grid) (col row1 row2 : Nat) (style : Style) (layer : Layer := .co
   else Id.run do
     let mut g := g
     for r in [row1:row2+1] do
-      let strokes :=
-        if r == row1 then { Strokes.vertical with up := false }
-        else if r == row2 then { Strokes.vertical with down := false }
-        else Strokes.vertical
-      g := g.writeStrokes r col strokes style layer
+      g := g.writeStrokes r col Strokes.vertical style layer
     return g
 
 def writeString (g : Grid) (row col : Nat) (s : String) (style : Style := .none) (layer : Layer := .message) : Grid := Id.run do
@@ -110,7 +104,7 @@ def writeString (g : Grid) (row col : Nat) (s : String) (style : Style := .none)
     c := c + 1
   return g
 
-def flush (g : Grid) (severity : Severity) : String := Id.run do
+def flush (g : Grid) (severity : Severity) (cfg : RenderConfig) : String := Id.run do
   let mut out : Array String := #[]
   for r in [0:g.rows] do
     let mut maxCol : Nat := 0
@@ -128,13 +122,13 @@ def flush (g : Grid) (severity : Severity) : String := Id.run do
         let cell := g.cells[(r, c)]?.getD Cell.char
         if cell.style != curStyle then
           if curStyle != .none then
-            line := line ++ Ansi.reset
+            line := line ++ resetIn cfg
           if cell.style != .none then
-            line := line ++ styleAnsi cell.style severity
+            line := line ++ styleAnsiIn cfg cell.style severity
           curStyle := cell.style
-        line := line.push cell.content.render
+        line := line.push (cell.content.render cfg.glyphSet)
       if curStyle != .none then
-        line := line ++ Ansi.reset
+        line := line ++ resetIn cfg
       out := out.push line
   return String.intercalate "\n" out.toList
 
