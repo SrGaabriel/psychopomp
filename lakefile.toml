@@ -1,0 +1,6 @@
+name = "psychopomp"
+version = "0.1.0"
+defaultTargets = ["Psychopomp"]
+
+[[lean_lib]]
+name = "Psychopomp"
