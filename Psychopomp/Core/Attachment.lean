@@ -1,7 +1,10 @@
 import Psychopomp.Core.Severity
 import Psychopomp.Core.ViewState
 import Psychopomp.Core.RenderConfig
-import Psychopomp.Core.Json
+
+import Kenosis
+
+open Kenosis.Json
 
 namespace Psychopomp
 
@@ -13,7 +16,7 @@ structure RenderedAttachment where
 structure Attachment where
   tag : String
   render : Severity → ViewState → RenderConfig → RenderedAttachment
-  payload : Option Json := none
+  payload : Option JsonValue := none
 
 instance : Inhabited Attachment where
   default := { tag := "", render := fun _ _ _ => default }

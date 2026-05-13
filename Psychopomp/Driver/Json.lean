@@ -1,26 +1,10 @@
 import Kenosis
 import Psychopomp.Core.Diagnostic
-import Psychopomp.Core.Json
 import Psychopomp.Substrate.Repository
 
 namespace Psychopomp.Driver.Json
 
-open Kenosis Psychopomp
-
-private partial def serializeJson {m : Type → Type} [Monad m] [Encoder m] : Json → m Unit
-  | .null => Encoder.putNull
-  | .bool b => Encoder.putBool b
-  | .num n => Encoder.putFloat n
-  | .str s => Encoder.putString s
-  | .arr items => Encoder.putList (items.map serializeJson)
-  | .obj fields => Encoder.putObject (fields.map (fun (k, v) => (k, serializeJson v)))
-
-instance : Serialize Psychopomp.Json where
-  serialize := serializeJson
-
-instance : Deserialize Psychopomp.Json where
-  -- todo
-  deserialize := pure Psychopomp.Json.null
+open Kenosis Psychopomp Kenosis.Json
 
 structure SpanJson where
   startLine : Nat
@@ -60,7 +44,7 @@ structure AttachmentJson where
   tag : String
   title : String
   body : List String
-  payload : Option Psychopomp.Json := none
+  payload : Option JsonValue := none
   deriving Serialize, Deserialize, BEq, Repr, Inhabited
 
 structure EditJson where
