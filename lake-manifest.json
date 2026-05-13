@@ -1,5 +1,16 @@
-{"version": "1.1.0",
+{"version": "1.2.0",
  "packagesDir": ".lake/packages",
- "packages": [],
+ "packages":
+ [{"url": "https://github.com/SrGaabriel/kenosis",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "c5750f1e8c059136fdde5062a78691cfe3b98db1",
+   "name": "kenosis",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "main",
+   "inherited": false,
+   "configFile": "lakefile.toml"}],
  "name": "psychopomp",
- "lakeDir": ".lake"}
+ "lakeDir": ".lake",
+ "fixedToolchain": false}
