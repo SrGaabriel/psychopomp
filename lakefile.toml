@@ -1,7 +1,7 @@
 name = "psychopomp"
 version = "0.1.0"
 defaultTargets = ["Psychopomp"]
-testDriver = "test"
+testDriver = "testPsychopomp"
 
 [[require]]
 name = "kenosis"
@@ -12,8 +12,8 @@ rev = "main"
 name = "Psychopomp"
 
 [[lean_lib]]
-name = "Test"
+name = "PsychopompTest"
 
 [[lean_exe]]
-name = "test"
+name = "testPsychopomp"
 root = "Test"
