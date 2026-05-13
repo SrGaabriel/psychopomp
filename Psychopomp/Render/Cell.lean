@@ -31,11 +31,13 @@ instance (a b : Layer) : Decidable (a ≤ b) := inferInstanceAs (Decidable (a.to
 inductive CellContent where
   | char (c : Char)
   | strokes (s : Strokes)
+  | continuation
   deriving Repr, BEq, Hashable, Inhabited
 
-def CellContent.render (gs : GlyphSet) : CellContent → Char
-  | .char c => c
-  | .strokes s => s.toChar gs
+def CellContent.render (gs : GlyphSet) : CellContent → Option Char
+  | .char c => some c
+  | .strokes s => some (s.toChar gs)
+  | .continuation => none
 
 structure Cell where
   content : CellContent
@@ -120,13 +122,16 @@ def flush (g : Grid) (severity : Severity) (cfg : RenderConfig) : String := Id.r
       let mut curStyle : Style := .none
       for c in [0:maxCol+1] do
         let cell := g.cells[(r, c)]?.getD Cell.char
-        if cell.style != curStyle then
-          if curStyle != .none then
-            line := line ++ resetIn cfg
-          if cell.style != .none then
-            line := line ++ styleAnsiIn cfg cell.style severity
-          curStyle := cell.style
-        line := line.push (cell.content.render cfg.glyphSet)
+        match cell.content.render cfg.glyphSet with
+        | none => pure ()
+        | some ch =>
+          if cell.style != curStyle then
+            if curStyle != .none then
+              line := line ++ resetIn cfg
+            if cell.style != .none then
+              line := line ++ styleAnsiIn cfg cell.style severity
+            curStyle := cell.style
+          line := line.push ch
       if curStyle != .none then
         line := line ++ resetIn cfg
       out := out.push line

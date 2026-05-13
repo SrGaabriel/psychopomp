@@ -1,5 +1,6 @@
 import Std.Data.HashMap
 import Psychopomp.Core.Diagnostic
+import Psychopomp.Core.CharWidth
 import Psychopomp.Substrate.Repository
 import Psychopomp.Render.Color
 import Psychopomp.Render.Glyph
@@ -49,7 +50,7 @@ private structure RowLayout where
 private def RowLayout.totalRows (rl : RowLayout) : Nat := rl.rowKind.size
 
 private def computeRowLayout
-    (singles : Array ResolvedLabel) (multiSpans : Array (Nat × ResolvedLabel))
+    (singles : Array ResolvedLabel) (multiSpans : Array ResolvedLabel)
     (snippetLines : Array Nat) : RowLayout := Id.run do
   let mut kinds : Array RowKind := #[]
   let mut contentRow : HashMap Nat Nat := ∅
@@ -74,7 +75,7 @@ private def computeRowLayout
         for _ in [0 : withMsg.size] do kinds := kinds.push .internal
 
     for i in [0 : multiSpans.size] do
-      let (_, ms) := multiSpans[i]!
+      let ms := multiSpans[i]!
       if ms.range.endLine == ln then
         spanEndCornerRow := spanEndCornerRow.insert i kinds.size
         kinds := kinds.push .internal
@@ -114,10 +115,15 @@ private def writeSkipGutter (g : Grid) (cl : ColLayout) (gs : GlyphSet) (row : N
 
 private def writeContent (g : Grid) (cl : ColLayout) (row : Nat) (ld : LineData) : Grid := Id.run do
   let mut g := g
-  let mut c := cl.contentStartCol
+  let mut col := cl.contentStartCol
   for ch in ld.visual.toList do
-    g := g.writeChar row c ch .none .content
-    c := c + 1
+    g := g.writeChar row col ch .none .content
+    let w := Char.visualWidth ch
+    if w == 2 then
+      g := g.write row (col + 1) { content := .continuation, style := .none, layer := .content }
+      col := col + 2
+    else
+      col := col + 1
   return g
 
 private def labelStyle (l : ResolvedLabel) : Style := Style.ofColorRole l.style.color
@@ -134,9 +140,9 @@ private def underlineGlyph (p : UnderlinePattern) (gs : GlyphSet) : UnderlineGly
   | .heavy => .char (Glyph.underlineHeavy gs)
   | .wavy => .char (Glyph.underlineWavy gs)
   | .strikethrough => .strike
-  | .dotted => .strokes
-  | .dashed => .strokes
-  | .doubleLine => .strokes
+  | .dotted => .char (Glyph.underlineDotted gs)
+  | .dashed => .char (Glyph.underlineDashed gs)
+  | .doubleLine => .char (Glyph.underlineDouble gs)
 
 private def drawUnderlineRange (g : Grid) (row : Nat) (startCol endCol : Nat)
     (style : Style) (glyph : UnderlineGlyph) : Grid :=
@@ -209,6 +215,35 @@ private def drawSingleLabelStack
       g := g.writeString dropRow (anchorCol + 4) msg style .message
   return g
 
+private def dominantStyle (labels : Array ResolvedLabel) : Style := Id.run do
+  let mut best : Option ResolvedLabel := none
+  for l in labels do
+    match best with
+    | none => best := some l
+    | some b => if l.style.weight > b.style.weight then best := some l
+  match best with
+  | some l => Style.ofColorRole l.style.color
+  | none => .accent
+
+private def drawLinkGroup
+    (g : Grid) (cl : ColLayout) (connectorIdx : Nat)
+    (memberRows : Array Nat) (members : Array ResolvedLabel) : Grid := Id.run do
+  let mut g := g
+  if memberRows.size < 2 then return g
+  let sorted := (memberRows.toList.mergeSort (· < ·)).toArray
+  let minRow := sorted[0]!
+  let maxRow := sorted[sorted.size - 1]!
+  let cCol := cl.connectorCol connectorIdx
+  let style := dominantStyle members
+  if minRow + 1 ≤ maxRow - 1 then
+    g := g.vline cCol (minRow + 1) (maxRow - 1) style .connector
+  g := g.writeStrokes minRow cCol { down := true, right := true } style .connector
+  g := g.writeStrokes maxRow cCol { up := true, right := true } style .connector
+  for r in sorted do
+    if r ≠ minRow ∧ r ≠ maxRow then
+      g := g.writeStrokes r cCol Strokes.teeRight style .connector
+  return g
+
 private def drawMultiSpan
     (g : Grid) (cl : ColLayout) (startRow endRow connectorIdx : Nat)
     (span : ResolvedLabel) : Grid := Id.run do
@@ -233,8 +268,16 @@ private def renderSnippetBlock
     (cfg : RenderConfig) : String := Id.run do
   let snippetLines := collectSnippetLines group cfg.contextLines
   let lineDataMap := buildLineDataMap group.view snippetLines
-  let multiSpans := assignConnectors (group.labels.filter ResolvedLabel.isMultiLine)
-  let numConnectors := multiSpans.foldl (fun acc (c, _) => max acc (c + 1)) 0
+
+  let multiSpans : Array ResolvedLabel := group.labels.filter ResolvedLabel.isMultiLine
+  let linkGroups := collectLinkGroups group.labels
+  let mut entries : Array ConnectorEntry := #[]
+  for i in [0 : multiSpans.size] do
+    entries := entries.push (.multiSpan i multiSpans[i]!)
+  for (gid, mems) in linkGroups do
+    entries := entries.push (.linkGroup gid mems)
+  let placed := assignConnectors entries
+  let numConnectors := placed.foldl (fun acc (c, _) => max acc (c + 1)) 0
   let cl : ColLayout := { gutterWidth, numConnectors }
   let layout := computeRowLayout group.labels multiSpans snippetLines
   let total := layout.totalRows
@@ -262,20 +305,28 @@ private def renderSnippetBlock
       let sorted := (singles.toList.mergeSort fun a b => a.range.startCol < b.range.startCol).toArray
       g := drawSingleLabelStack g cl gs (contentR + 1) sorted
 
-  for i in [0 : multiSpans.size] do
-    let (cIdx, span) := multiSpans[i]!
-    let startR := layout.contentRow[span.range.startLine]! + off
-    let endR := layout.spanEndCornerRow[i]! + off
-    g := drawMultiSpan g cl startR endR cIdx span
+  for (cIdx, entry) in placed do
+    match entry with
+    | .multiSpan spanIdx span =>
+      let startR := layout.contentRow[span.range.startLine]! + off
+      let endR := layout.spanEndCornerRow[spanIdx]! + off
+      g := drawMultiSpan g cl startR endR cIdx span
+    | .linkGroup _ members =>
+      let memberRows : Array Nat := members.map fun m =>
+        layout.contentRow.getD m.range.startLine 0 + off
+      g := drawLinkGroup g cl cIdx memberRows members
 
   for r in [0 : total] do
     match layout.rowKind[r]! with
     | .skip above below =>
       let realRow := r + off
-      for (cIdx, span) in multiSpans do
-        if span.range.startLine ≤ above ∧ span.range.endLine ≥ below then
-          g := g.writeChar realRow (cl.connectorCol cIdx) (Glyph.pipeDotted gs)
-                              (labelStyle span) .connector
+      for (cIdx, entry) in placed do
+        let (eStart, eEnd) := entry.lineRange
+        if eStart ≤ above ∧ eEnd ≥ below then
+          let style : Style := match entry with
+            | .multiSpan _ span => labelStyle span
+            | .linkGroup _ members => dominantStyle members
+          g := g.writeChar realRow (cl.connectorCol cIdx) (Glyph.pipeDotted gs) style .connector
     | _ => pure ()
 
   g := writeGutter g cl gs (total + off) none
@@ -348,7 +399,7 @@ private def renderCausalSummary
     let reset := resetIn cfg
     let plural := if n == 1 then "diagnostic" else "diagnostics"
     some (pad ++ " " ++ dim ++ "⤷ " ++ toString n ++ " downstream " ++ plural ++
-      " suppressed (expand with `--show-cascades`)" ++ reset)
+      " suppressed" ++ reset)
 
 def renderDiagnostic [SubstrateRepository R]
     (d : Diagnostic) (view : ViewState := .empty) (cfg : RenderConfig := {}) (repo : R)

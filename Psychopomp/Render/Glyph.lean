@@ -85,6 +85,18 @@ def underlineWavy : GlyphSet → Char
   | .unicode => '∿'
   | .ascii => '~'
 
+def underlineDotted : GlyphSet → Char
+  | .unicode => '┈'
+  | .ascii => '.'
+
+def underlineDashed : GlyphSet → Char
+  | .unicode => '╌'
+  | .ascii => '-'
+
+def underlineDouble : GlyphSet → Char
+  | .unicode => '═'
+  | .ascii => '='
+
 def strikethrough : GlyphSet → Char
   | .unicode => '╳'
   | .ascii => 'x'

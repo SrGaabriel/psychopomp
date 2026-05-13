@@ -2,6 +2,7 @@ import Std.Data.HashMap
 import Psychopomp.Core.Severity
 import Psychopomp.Core.Span
 import Psychopomp.Core.Label
+import Psychopomp.Core.CharWidth
 import Psychopomp.Core.RenderConfig
 import Psychopomp.Substrate.View
 
@@ -27,8 +28,10 @@ def build (lineNum : Nat) (raw : String) (tabWidth : Nat) : LineData := Id.run d
       for _ in [0:advance] do visualChars := visualChars.push ' '
       visualCol := visualCol + advance
     else
-      visualChars := visualChars.push c
-      visualCol := visualCol + 1
+      let w := Char.visualWidth c
+      if w > 0 then
+        visualChars := visualChars.push c
+        visualCol := visualCol + w
   return { lineNum, raw, visual := String.ofList visualChars.toList, visualWidth := visualCol }
 
 end LineData
@@ -53,21 +56,67 @@ structure SnippetGroup where
   headerLabel : ResolvedLabel
   deriving Inhabited
 
-def assignConnectors (spans : Array ResolvedLabel) : Array (Nat × ResolvedLabel) := Id.run do
-  let sorted := (spans.toList.mergeSort fun a b =>
-    if a.range.startLine ≠ b.range.startLine then a.range.startLine < b.range.startLine
-    else a.range.endLine ≥ b.range.endLine).toArray
-  let mut placed : Array (Nat × ResolvedLabel) := #[]
-  for span in sorted do
+inductive ConnectorEntry where
+  | multiSpan (spanIdx : Nat) (span : ResolvedLabel)
+  | linkGroup (groupId : String) (members : Array ResolvedLabel)
+  deriving Inhabited
+
+namespace ConnectorEntry
+
+def lineRange : ConnectorEntry → Nat × Nat
+  | .multiSpan _ s => (s.range.startLine, s.range.endLine)
+  | .linkGroup _ members => Id.run do
+    let mut minL : Nat := 0
+    let mut maxL : Nat := 0
+    let mut first := true
+    for m in members do
+      if first then
+        minL := m.range.startLine
+        maxL := m.range.startLine
+        first := false
+      else
+        minL := min minL m.range.startLine
+        maxL := max maxL m.range.startLine
+    return (minL, maxL)
+
+end ConnectorEntry
+
+def assignConnectors (entries : Array ConnectorEntry) : Array (Nat × ConnectorEntry) := Id.run do
+  let sorted := (entries.toList.mergeSort fun a b =>
+    let (aStart, aEnd) := a.lineRange
+    let (bStart, bEnd) := b.lineRange
+    if aStart ≠ bStart then aStart < bStart
+    else aEnd ≥ bEnd).toArray
+  let mut placed : Array (Nat × ConnectorEntry) := #[]
+  for entry in sorted do
+    let (s, e) := entry.lineRange
     let mut col : Nat := 0
     let mut found := false
     while !found do
       let clash := placed.any fun (c, other) =>
-        c == col ∧ ¬ (span.range.endLine < other.range.startLine ∨ other.range.endLine < span.range.startLine)
+        let (os, oe) := other.lineRange
+        c == col ∧ ¬ (e < os ∨ oe < s)
       if clash then col := col + 1
       else found := true
-    placed := placed.push (col, span)
+    placed := placed.push (col, entry)
   return placed
+
+def collectLinkGroups (labels : Array ResolvedLabel) : Array (String × Array ResolvedLabel) := Id.run do
+  let mut buckets : HashMap String (Array ResolvedLabel) := ∅
+  let mut order : Array String := #[]
+  for lbl in labels do
+    match lbl.style.linkGroup with
+    | none => pure ()
+    | some g =>
+      if !buckets.contains g then order := order.push g
+      buckets := buckets.insert g ((buckets.getD g #[]).push lbl)
+  let mut result : Array (String × Array ResolvedLabel) := #[]
+  for g in order do
+    let mems := buckets[g]!
+    if mems.size ≥ 2 then
+      let sorted := (mems.toList.mergeSort fun a b => a.range.startLine < b.range.startLine).toArray
+      result := result.push (g, sorted)
+  return result
 
 def collectSnippetLines (group : SnippetGroup) (contextLines : Nat) : Array Nat := Id.run do
   let mut needed : Array Nat := #[]

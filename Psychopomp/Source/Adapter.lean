@@ -1,6 +1,7 @@
 import Psychopomp.Source
 import Psychopomp.Core.Span
 import Psychopomp.Core.Label
+import Psychopomp.Core.CharWidth
 import Psychopomp.Substrate.View
 
 namespace Psychopomp
@@ -66,7 +67,6 @@ def byteColToVisualCol (raw : String) (byteCol : Nat) (tabWidth : Nat) : Nat := 
   let mut pos : String.Pos.Raw := ⟨0⟩
   let mut visualCol : Nat := 0
   while pos.byteIdx < target do
-    let charStart := pos.byteIdx
     let c := pos.get raw
     pos := pos.next raw
     let charEnd := pos.byteIdx
@@ -75,8 +75,7 @@ def byteColToVisualCol (raw : String) (byteCol : Nat) (tabWidth : Nat) : Nat := 
     if c == '\t' then
       visualCol := visualCol + (tabWidth - visualCol % tabWidth)
     else
-      visualCol := visualCol + 1
-    let _ := charStart
+      visualCol := visualCol + Char.visualWidth c
   return visualCol
 
 structure SourceContext where

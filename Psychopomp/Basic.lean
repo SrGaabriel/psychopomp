@@ -2,6 +2,7 @@ import Psychopomp.Source
 import Psychopomp.Source.Adapter
 import Psychopomp.Core.Span
 import Psychopomp.Core.Severity
+import Psychopomp.Core.CharWidth
 import Psychopomp.Core.Label
 import Psychopomp.Core.Edit
 import Psychopomp.Core.ViewState
