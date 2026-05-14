@@ -383,12 +383,19 @@ private def renderQuickFixListing
     let pad := String.ofList (List.replicate gutterWidth ' ')
     let markerC := if cfg.colorsEnabled then Ansi.green else ""
     let boldC := if cfg.colorsEnabled then Ansi.bold else ""
+    let dimC := if cfg.colorsEnabled then Ansi.dim else ""
     let reset := resetIn cfg
     let title := pad ++ " " ++ markerC ++ "=" ++ reset ++ " " ++ boldC ++ "available fixes:" ++ reset
     let bodyPrefix := pad ++ "   "
-    let lines := fixes.zipIdx.map fun (qf, i) =>
-      bodyPrefix ++ "⌖ #" ++ toString (i + 1) ++ ": " ++ qf.description
-    title :: lines
+    let previewPrefix := pad ++ "       "
+    title :: fixes.zipIdx.foldr (init := ([] : List String)) fun (qf, i) acc =>
+      let descLine := bodyPrefix ++ "⌖ #" ++ toString (i + 1) ++ ": " ++ qf.description
+      match qf.preview with
+      | none => descLine :: acc
+      | some p =>
+        let previewLines := (String.splitOn p "\n").map fun line =>
+          previewPrefix ++ dimC ++ (LineData.build 0 line cfg.tabWidth).visual ++ reset
+        descLine :: previewLines ++ acc
 
 private def renderCausalSummary
     (cfg : RenderConfig) (gutterWidth : Nat) (n : Nat) : Option String :=
@@ -404,7 +411,7 @@ private def renderCausalSummary
 def renderDiagnostic [SubstrateRepository R]
     (d : Diagnostic) (view : ViewState := .empty) (cfg : RenderConfig := {}) (repo : R)
     : Except String RenderedOutput := do
-  let _ := view 
+  let _ := view
   let groups ← groupByRef repo d
 
   let gutterWidth := groups.foldl (init := 1) fun acc g =>
